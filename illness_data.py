@@ -7,28 +7,34 @@ from mpl_toolkits.basemap import Basemap
 from pandas.plotting import register_matplotlib_converters
 import numpy as np
 import china_region
+import warnings
 
 register_matplotlib_converters()
 
 
 class Covid19Analysis:
+    warnings.filterwarnings('ignore')
     def __init__(self):
-        self.url = "https://view.inews.qq.com/g2/getOnsInfo?name=disease_h5"
+        self.url_1 = "https://view.inews.qq.com/g2/getOnsInfo?name=disease_h5"
+        self.url_2 = 'https://view.inews.qq.com/g2/getOnsInfo?name=disease_other'
         self.update_time = None
 
     def phasing_data(self):
-        data = json.loads(requests.get(self.url).json()['data'])
+        area_data = json.loads(requests.get(self.url_1).json()['data'])
+        china_data = json.loads(requests.get(self.url_2).json()['data'])
         # total illness in china
-        cn_total = data["chinaTotal"]
+        cn_total = area_data["chinaTotal"]
         # last update time
-        self.update_time = data['lastUpdateTime']
+        self.update_time = area_data['lastUpdateTime']
         # global areas  data
-        area_data = data['areaTree']
+        areaTree = area_data['areaTree']
         # adding list
-        adding_day_list = data['chinaDayList']
+        adding_day_list = china_data['chinaDayList']
         # accumulated total
-        accumulated_day_list = data['chinaDayAddList']
-        return cn_total, area_data, adding_day_list, accumulated_day_list
+        accumulated_day_list = china_data['chinaDayAddList']
+
+        # daily_history = data['dailyHistory']
+        return cn_total, areaTree, adding_day_list, accumulated_day_list
 
     def proseeing_data(self, data):
         date_list = []
@@ -136,7 +142,7 @@ class Covid19Analysis:
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 16)
         cn_map = Basemap(projection='lcc', width=5000000, height=5000000, lat_0=36, lon_0=102, llcrnrlon=lon_min,
-                         llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='l', ax=ax)
+                         llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='i', ax=ax)
         cn_map.readshapefile('City/CN_city', 'cities', drawbounds=True, antialiased=3)
         for info, shape in zip(cn_map.cities_info, cn_map.cities):
             city = info['NAME'].strip('\x00')
@@ -184,7 +190,6 @@ class Covid19Analysis:
             poly = Polygon(shape, facecolor=color, edgecolor=color)
             ax.add_patch(poly)
         cn_map.drawcoastlines(color='black', linewidth=0.4, )
-        cn_map.drawcountries(color='black',linewidth=0.8)
         cn_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
         cn_map.drawmeridians(np.arange(lon_min, lon_max, 10), labels=[0, 0, 0, 1])
         ax.legend(handles, legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=4, prop={'size': 16})
@@ -197,8 +202,8 @@ class Covid19Analysis:
     def plot_world_map(self, *data):
         lat_max = 90
         lat_min = -90
-        lon_max = 360
-        lon_min = 0
+        lon_max = 180
+        lon_min = -180
         legend_labels = ['1-9', '10-99', '100-999', '>1000']
         font = FontProperties(size=20)
         handles = [
@@ -207,13 +212,44 @@ class Covid19Analysis:
             Patch(color='#bf2121', alpha=1, linewidth=0),
             Patch(color='#7f1818', alpha=1, linewidth=0)
         ]
+        cdata = {}
+        for _ in data[0]:
+            if _['name'] == '钻石号邮轮':
+                cdata['日本本土'] = _['total']['confirm']
+            elif _['name'] in cdata.keys():
+                cdata[_['name']] += _['total']['confirm']
+            else:
+                cdata[_['name']] = _['total']['confirm']
+        print(cdata)
         fig, ax = plt.subplots()
-        fig.set_size_inches(int(16*3.14), 16)
+        fig.set_size_inches(32, 16)
         world_map = Basemap( lat_0=0, lon_0=180, llcrnrlon=lon_min,
-                         llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='l', ax=ax)
-        world_map.readshapefile()
-        world_map.drawcoastlines(color='black', linewidth=0.8)
-        world_map.drawcountries(color='black', linewidth=0.8)
+                         llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='i', ax=ax)
+        world_map.readshapefile('世界国家/世界国家','countries', drawbounds=True, antialiased=3)
+        for info, shape in zip(world_map.countries_info, world_map.countries):
+                # print(info['FCNAME'])
+            country = info['FCNAME']
+            color = '#ffffff'
+            # if str(country) == '美国' or str(country) == '加拿大' or str(country) == '埃及':
+            #     color = '#000000'
+            #     print(info)
+            for key in cdata.keys():
+                if str(country) in key or key in str(country):
+                    if cdata[key] == 0:
+                        color = '#f0f0f0'
+                    elif cdata[key] < 10:
+                        color = '#ffaa85'
+                    elif cdata[key] < 100:
+                        color = '#ff7b69'
+                    elif cdata[key] < 1000:
+                        color = '#bf2121'
+                    else:
+                        color = '#7f1818'
+                    break
+            # else:
+            #     print('Not match: ', country)
+            poly = Polygon(shape, facecolor=color, edgecolor=color)
+            ax.add_patch(poly)
         world_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
         world_map.drawmeridians(np.arange(lon_min, lon_max, 10), labels=[0, 0, 0, 1])
         ax.legend(handles, legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=4, prop={'size': 16})
@@ -294,10 +330,12 @@ if __name__ == '__main__':
     accumulated_data = a.proseeing_data(result[2])
     city_data = a.processing_city_data(result[1], 'total')
     print(city_data)
+    print()
     a.covid_19_data_plotting('COVID-19 Daily Data', daily_data[0], daily_data[1:], labels)
     a.covid_19_data_plotting('COVID-19 Accumulated Tracing', accumulated_data[0], accumulated_data[1:], labels)
     a.plot_cn_map(city_data, title='COVID-19 map')
     city_data_net = a.processing_city_data(result[1], 'net')
     a.plot_cn_map(city_data_net, title='COVID-19 map--net')
-    a.plot_world_map()
+    #
+    a.plot_world_map(result[1])
     # prediction()
