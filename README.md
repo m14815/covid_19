@@ -4,4 +4,5 @@ Writing...
 ____
 # covid_19
 COVID-19 data display.<br>
-![](https://github.com/m14815/covid_19/master/COVID-19_Accumulated_Tracing.png)
+![](https://github.com/m14815/covid_19/blob/master/COVID-19%20map.PNG)
+![](https://github.com/m14815/covid_19/blob/master/COVID-19_world_map.PNG)
