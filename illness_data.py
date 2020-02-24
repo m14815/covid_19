@@ -1,125 +1,114 @@
-import time, json, requests, datetime
-import matplotlib.pyplot as plt
+"""
+This python program get COVID-19 data from tencent, and visualize data, 2D line graph and China, Global map are used.
+Version: 1.0
+
+"""
+import datetime
+import json
+import requests
+import time
+import warnings
+import china_region
 import matplotlib.dates as dt
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Polygon, Patch
 from mpl_toolkits.basemap import Basemap
 from pandas.plotting import register_matplotlib_converters
-import numpy as np
-import china_region
-import warnings
 
 register_matplotlib_converters()
 
 
 class Covid19Analysis:
     warnings.filterwarnings('ignore')
+
     def __init__(self):
         self.url_1 = "https://view.inews.qq.com/g2/getOnsInfo?name=disease_h5"
         self.url_2 = 'https://view.inews.qq.com/g2/getOnsInfo?name=disease_other'
         self.update_time = None
 
-    def phasing_data(self):
+    def get_data(self):
+        # get data from url
         area_data = json.loads(requests.get(self.url_1).json()['data'])
         china_data = json.loads(requests.get(self.url_2).json()['data'])
-        # total illness in china
-        cn_total = area_data["chinaTotal"]
         # last update time
         self.update_time = area_data['lastUpdateTime']
+        # total illness in china
+        cn_total = area_data["chinaTotal"]
         # global areas  data
-        areaTree = area_data['areaTree']
+        area_tree = area_data['areaTree']
         # adding list
-        adding_day_list = china_data['chinaDayList']
+        adding_day_list = self.proseeing_data(china_data['chinaDayList'])
         # accumulated total
-        accumulated_day_list = china_data['chinaDayAddList']
-
-        # daily_history = data['dailyHistory']
-        return cn_total, areaTree, adding_day_list, accumulated_day_list
+        accumulated_day_list = self.proseeing_data(china_data['chinaDayAddList'])
+        return cn_total, area_tree, adding_day_list, accumulated_day_list
 
     def proseeing_data(self, data):
-        date_list = []
-        confirm = []
-        suspect = []
-        dead = []
-        heal = []
+        result = {'date_list': [], 'confirm': [], 'suspect': [], 'dead': [], 'heal': []}
         for _ in data:
             month, day = _['date'].split('.')
-            date_list += [datetime.datetime.strptime("2020-%s-%s" % (month, day), '%Y-%m-%d')]
-            confirm += [int(_['confirm'])]
-            dead += [int(_['dead'])]
-            suspect += [int(_['suspect'])]
-            heal += [int(_['heal'])]
-        return date_list, confirm, suspect, dead, heal
+            result['date_list'] += [datetime.datetime.strptime("2020-%s-%s" % (month, day), '%Y-%m-%d')]
+            result['confirm'] += [int(_['confirm'])]
+            result['dead'] += [int(_['dead'])]
+            result['suspect'] += [int(_['suspect'])]
+            result['heal'] += [int(_['heal'])]
+        return result
 
     def processing_city_data(self, data, cat):
-        d_cities = {'重庆': '重庆市', '北京': '北京市', '天津': '天津市', '上海': '上海市', '香港': '香港', '澳门': '澳门', '台湾': '台湾'}
-        special = {'兵团第四师': '伊犁州', '兵团第九师': '塔城市', '兴安盟乌兰浩特': '乌兰浩特市',
-                   '济源示范区': '济源市', '湘西自治州': '吉首市', '普洱': '思茅市', '黔西南州': '兴义市', '第八师石河子': '石河子市',
-                   '兵团第十二师': '乌鲁木齐', '六师五家渠': '五家渠市', '第七师': '胡杨河市', '宁东管委会': '银川市', '赣江新区': '南昌市',
-                   '菏泽': '菏泽市'}
+        d_cities = {'重庆': '重庆市', '北京': '北京市', '天津': '天津市', '上海': '上海市', '香港': '香港', '澳门': '澳门',
+                    '台湾': '台湾'}
+        special = {'兵团第四师': '伊犁州', '兵团第九师': '塔城市', '兴安盟乌兰浩特': '乌兰浩特市', '济源示范区': '济源市',
+                   '湘西自治州': '吉首市', '普洱': '思茅市', '黔西南州': '兴义市', '第八师石河子': '石河子市',
+                   '兵团第十二师': '乌鲁木齐', '六师五家渠': '五家渠市', '第七师': '胡杨河市', '宁东管委会': '银川市',
+                   '赣江新区': '南昌市', '菏泽': '菏泽市'}
         province = {}
-        if cat == 'total':
-            for _ in data[0]['children']:
-                # add direct cities
-                if _['name'] in d_cities.keys():
-                    province[d_cities[_['name']]] = _['total']['confirm']
-                # add xizang
-                elif _['name'] == '西藏':
-                    province[_['name']] = {}
-                    province[_['name']] = {'拉萨市': _['total']['confirm']}
-                # add cities based on province
-                else:
-                    province[_['name']] = {}
-                    for c in _['children']:
-                        if (c['name'] != '地区待确认') and (c['name'] != '地区待确定'):
-                            if c['name'] in special.keys():
-                                if special[c['name']] in province[_['name']].keys():
-                                    province[_['name']][special[c['name']]] += c['total']['confirm']
-                                else:
-                                    province[_['name']][special[c['name']]] = c['total']['confirm']
+        for _ in data[0]['children']:
+            heal = None
+            if cat == 'total':
+                heal = 0
+            elif cat == 'net':
+                heal = _['total']['heal']
+            # add direct cities
+            if _['name'] in d_cities.keys():
+                province[d_cities[_['name']]] = _['total']['confirm'] - heal
+            # add Xi Zang
+            elif _['name'] == '西藏':
+                province[_['name']] = {}
+                province[_['name']] = {'拉萨市': _['total']['confirm'] - heal}
+            # add cities based on province
+            else:
+                province[_['name']] = {}
+                for c in _['children']:
+                    if heal == 'net':
+                        heal = c['total']['heal']
+                    if (c['name'] != '地区待确认') and (c['name'] != '地区待确定'):
+                        if c['name'] in special.keys():
+                            if special[c['name']] in province[_['name']].keys():
+                                province[_['name']][special[c['name']]] += c['total']['confirm'] - heal
                             else:
-                                search = china_region.search(province=_['name'], city=c['name'])
-                                if len(search) > 0:
-                                    province[_['name']][search['city']] = c['total']['confirm']
-                                else:
-                                    province[_['name']][c['name']] = c['total']['confirm']
-        elif cat == 'net':
-            for _ in data[0]['children']:
-                # add direct cities
-                if _['name'] in d_cities.keys():
-                    province[d_cities[_['name']]] = _['total']['confirm'] - _['total']['heal']
-                # add xizang
-                elif _['name'] == '西藏':
-                    province[_['name']] = {}
-                    province[_['name']] = {'拉萨市': _['total']['confirm'] - _['total']['heal']}
-                # add cities based on province
-                else:
-                    province[_['name']] = {}
-                    for c in _['children']:
-                        if (c['name'] != '地区待确认') and (c['name'] != '地区待确定'):
-                            if c['name'] in special.keys():
-                                if special[c['name']] in province[_['name']].keys():
-                                    province[_['name']][special[c['name']]] += c['total']['confirm'] - c['total']['heal']
-                                else:
-                                    province[_['name']][special[c['name']]] = c['total']['confirm'] - c['total']['heal']
+                                province[_['name']][special[c['name']]] = c['total']['confirm'] - heal
+                        else:
+                            search = china_region.search(province=_['name'], city=c['name'])
+                            if len(search) > 0:
+                                province[_['name']][search['city']] = c['total']['confirm'] - heal
                             else:
-                                search = china_region.search(province=_['name'], city=c['name'])
-                                if len(search) > 0:
-                                    province[_['name']][search['city']] = c['total']['confirm'] - c['total']['heal']
-                                else:
-                                    province[_['name']][c['name']] = c['total']['confirm'] - c['total']['heal']
+                                province[_['name']][c['name']] = c['total']['confirm'] - heal
         return province
 
-    def match_city(self, c1, c2):
-        if len(china_region.search(county=c1)) == 0:
-            return False
-        elif china_region.search(county=c1)['city'] == china_region.search(city=c2)['city']:
-            return True
-        elif china_region.search(city=c1)['city'] == china_region.search(city=c2)['city']:
-            return True
-        elif china_region.search(city=c1)['city'] == china_region.search(county=c2)['city']:
-            return True
-        return False
+    def coloring(self,data):
+        color = '#ffffff'
+        if data == 0:
+            color = '#f0f0f0'
+        elif data < 10:
+            color = '#ffaa85'
+        elif data < 100:
+            color = '#ff7b69'
+        elif data < 1000:
+            color = '#bf2121'
+        elif data >= 1000:
+            color = '#7f1818'
+        return color
 
     def plot_cn_map(self, *data, title=None):
         lat_min = 0
@@ -154,16 +143,7 @@ class Covid19Analysis:
                     city = special[city]
                 for p_key in data[0].keys():
                     if p_key == city:
-                        if data[0][p_key] == 0:
-                            color = '#f0f0f0'
-                        elif data[0][p_key] < 10:
-                            color = '#ffaa85'
-                        elif data[0][p_key] < 100:
-                            color = '#ff7b69'
-                        elif data[0][p_key] < 1000:
-                            color = '#bf2121'
-                        else:
-                            color = '#7f1818'
+                        self.coloring(data[0][p_key])
                         break
                     elif isinstance(data[0][p_key], dict):
                         search = china_region.search(city=city)
@@ -172,16 +152,7 @@ class Covid19Analysis:
                             sc = search['city']
                         for c in data[0][p_key].keys():
                             if ((city == c or c in city) or (sc == c or c in sc)) and len(c) > 0:
-                                if data[0][p_key][c] == 0:
-                                    color = '#f0f0f0'
-                                elif data[0][p_key][c] < 10:
-                                    color = '#ffaa85'
-                                elif data[0][p_key][c] < 100:
-                                    color = '#ff7b69'
-                                elif data[0][p_key][c] < 1000:
-                                    color = '#bf2121'
-                                else:
-                                    color = '#7f1818'
+                                color = self.coloring(data[0][p_key][c])
                                 break
                     if color != '#ffffff':
                         break
@@ -227,27 +198,12 @@ class Covid19Analysis:
                          llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='i', ax=ax)
         world_map.readshapefile('世界国家/世界国家','countries', drawbounds=True, antialiased=3)
         for info, shape in zip(world_map.countries_info, world_map.countries):
-                # print(info['FCNAME'])
             country = info['FCNAME']
             color = '#ffffff'
-            # if str(country) == '美国' or str(country) == '加拿大' or str(country) == '埃及':
-            #     color = '#000000'
-            #     print(info)
             for key in cdata.keys():
                 if str(country) in key or key in str(country):
-                    if cdata[key] == 0:
-                        color = '#f0f0f0'
-                    elif cdata[key] < 10:
-                        color = '#ffaa85'
-                    elif cdata[key] < 100:
-                        color = '#ff7b69'
-                    elif cdata[key] < 1000:
-                        color = '#bf2121'
-                    else:
-                        color = '#7f1818'
+                    color = self.coloring(cdata[key])
                     break
-            # else:
-            #     print('Not match: ', country)
             poly = Polygon(shape, facecolor=color, edgecolor=color)
             ax.add_patch(poly)
         world_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
@@ -325,17 +281,14 @@ class Covid19Analysis:
 if __name__ == '__main__':
     labels = ['confirmed', 'suspect', 'dead', 'heal']
     a = Covid19Analysis()
-    result = a.phasing_data()
-    daily_data = a.proseeing_data(result[3])
-    accumulated_data = a.proseeing_data(result[2])
-    city_data = a.processing_city_data(result[1], 'total')
+    result = a.get_data()
     print(city_data)
     print()
-    a.covid_19_data_plotting('COVID-19 Daily Data', daily_data[0], daily_data[1:], labels)
-    a.covid_19_data_plotting('COVID-19 Accumulated Tracing', accumulated_data[0], accumulated_data[1:], labels)
-    a.plot_cn_map(city_data, title='COVID-19 map')
-    city_data_net = a.processing_city_data(result[1], 'net')
-    a.plot_cn_map(city_data_net, title='COVID-19 map--net')
-    #
-    a.plot_world_map(result[1])
+    # a.covid_19_data_plotting('COVID-19 Daily Data', daily_data[0], daily_data[1:], labels)
+    # a.covid_19_data_plotting('COVID-19 Accumulated Tracing', accumulated_data[0], accumulated_data[1:], labels)
+    # a.plot_cn_map(city_data, title='COVID-19 map')
+    # city_data_net = a.processing_city_data(result[1], 'net')
+    # a.plot_cn_map(city_data_net, title='COVID-19 map--net')
+    # #
+    # a.plot_world_map(result[1])
     # prediction()
