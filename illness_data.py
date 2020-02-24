@@ -45,17 +45,17 @@ class Covid19Analysis:
         return cn_total, area_tree, adding_day_list, accumulated_day_list
 
     def proseeing_data(self, data):
-        result = {'date_list': [], 'confirm': [], 'suspect': [], 'dead': [], 'heal': []}
+        result = {'date': [], 'confirm': [], 'suspect': [], 'dead': [], 'heal': []}
         for _ in data:
             month, day = _['date'].split('.')
-            result['date_list'] += [datetime.datetime.strptime("2020-%s-%s" % (month, day), '%Y-%m-%d')]
+            result['date'] += [datetime.datetime.strptime("2020-%s-%s" % (month, day), '%Y-%m-%d')]
             result['confirm'] += [int(_['confirm'])]
             result['dead'] += [int(_['dead'])]
             result['suspect'] += [int(_['suspect'])]
             result['heal'] += [int(_['heal'])]
         return result
 
-    def processing_city_data(self, data, cat):
+    def processing_city_data(self, data, cat=None):
         d_cities = {'重庆': '重庆市', '北京': '北京市', '天津': '天津市', '上海': '上海市', '香港': '香港', '澳门': '澳门',
                     '台湾': '台湾'}
         special = {'兵团第四师': '伊犁州', '兵团第九师': '塔城市', '兴安盟乌兰浩特': '乌兰浩特市', '济源示范区': '济源市',
@@ -64,10 +64,8 @@ class Covid19Analysis:
                    '赣江新区': '南昌市', '菏泽': '菏泽市'}
         province = {}
         for _ in data[0]['children']:
-            heal = None
-            if cat == 'total':
-                heal = 0
-            elif cat == 'net':
+            heal = 0
+            if cat == 'net':
                 heal = _['total']['heal']
             # add direct cities
             if _['name'] in d_cities.keys():
@@ -80,7 +78,7 @@ class Covid19Analysis:
             else:
                 province[_['name']] = {}
                 for c in _['children']:
-                    if heal == 'net':
+                    if cat == 'net':
                         heal = c['total']['heal']
                     if (c['name'] != '地区待确认') and (c['name'] != '地区待确定'):
                         if c['name'] in special.keys():
@@ -96,7 +94,7 @@ class Covid19Analysis:
                                 province[_['name']][c['name']] = c['total']['confirm'] - heal
         return province
 
-    def coloring(self,data):
+    def coloring(self, data):
         color = '#ffffff'
         if data == 0:
             color = '#f0f0f0'
@@ -143,7 +141,7 @@ class Covid19Analysis:
                     city = special[city]
                 for p_key in data[0].keys():
                     if p_key == city:
-                        self.coloring(data[0][p_key])
+                        color = self.coloring(data[0][p_key])
                         break
                     elif isinstance(data[0][p_key], dict):
                         search = china_region.search(city=city)
@@ -215,10 +213,10 @@ class Covid19Analysis:
         plt.close()
         return
 
-    def covid_19_data_plotting(self, title, date, data, legend_labels):
+    def covid_19_data_plotting(self, title, data, legend_labels):
         plt.figure(title, figsize=(10, 8))
-        for i in range(len(data)):
-            plt.plot(date, data[i], label=legend_labels[i], linestyle='dashed', marker='o')
+        for i in range(4):
+            plt.plot(data['date'], data[legend_labels[i]], label=legend_labels[i], linestyle='dashed', marker='o')
         plt.grid(linestyle=':')
         plt.legend(loc='best')
         plt.gca().xaxis.set_major_formatter(dt.DateFormatter('%m-%d'))
@@ -279,16 +277,15 @@ class Covid19Analysis:
 
 
 if __name__ == '__main__':
-    labels = ['confirmed', 'suspect', 'dead', 'heal']
+    labels = ['confirm', 'suspect', 'dead', 'heal']
     a = Covid19Analysis()
     result = a.get_data()
+    city_data = a.processing_city_data(result[1],'total')
     print(city_data)
-    print()
-    # a.covid_19_data_plotting('COVID-19 Daily Data', daily_data[0], daily_data[1:], labels)
-    # a.covid_19_data_plotting('COVID-19 Accumulated Tracing', accumulated_data[0], accumulated_data[1:], labels)
-    # a.plot_cn_map(city_data, title='COVID-19 map')
-    # city_data_net = a.processing_city_data(result[1], 'net')
-    # a.plot_cn_map(city_data_net, title='COVID-19 map--net')
-    # #
-    # a.plot_world_map(result[1])
-    # prediction()
+    a.covid_19_data_plotting('COVID-19 Daily Data',result[3], labels)
+    a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
+    a.plot_cn_map(city_data, title='COVID-19 map')
+    city_data_net = a.processing_city_data(result[1], 'net')
+    a.plot_cn_map(city_data_net, title='COVID-19 map--net')
+    a.plot_world_map(result[1])
+    prediction()
