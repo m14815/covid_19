@@ -11,7 +11,9 @@ import warnings
 import china_region
 import matplotlib.dates as dt
 import matplotlib.pyplot as plt
+from scipy import integrate, stats
 import numpy as np
+import random
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Polygon, Patch
 from mpl_toolkits.basemap import Basemap
@@ -192,9 +194,9 @@ class Covid19Analysis:
         print(cdata)
         fig, ax = plt.subplots()
         fig.set_size_inches(32, 16)
-        world_map = Basemap( lat_0=0, lon_0=180, llcrnrlon=lon_min,
-                         llcrnrlat=lat_min, urcrnrlon=lon_max, urcrnrlat=lat_max, resolution='i', ax=ax)
-        world_map.readshapefile('世界国家/世界国家','countries', drawbounds=True, antialiased=3)
+        world_map = Basemap(lat_0=0, lon_0=180, llcrnrlon=lon_min, llcrnrlat=lat_min, urcrnrlon=lon_max,
+                            urcrnrlat=lat_max, resolution='i', ax=ax)
+        world_map.readshapefile('世界国家/世界国家', 'countries', drawbounds=True, antialiased=3)
         for info, shape in zip(world_map.countries_info, world_map.countries):
             country = info['FCNAME']
             color = '#ffffff'
@@ -231,48 +233,43 @@ class Covid19Analysis:
 
     def prediction(self):
         # the prediction with SEIR model with death, and will be more complex
-        N = 10000000
-        S = [0]
-        E = [0]
-        I = [0]
-        R = [0]
-        D = [0]
-        NDs = 14  # Incubation period
-        alpha = 0.021  # influce rate
-        beta = 0.6  # recovery rate
-        gamma = 0.021  # death rate
-        theta = [0.0001]  # Explore rate
-        r_days = [7, 15]  # recovery duration
-        i = 0
-        S[0] = N
-        R[0] = 0
-        I[0] = 0
-        D[0] = 0
-        while S[-1] > 0:
-            S.append(S)
-            # S.append(int(S[0] - I[i] - R[i] - D[i]))
-            # if len(S) < 30:
-            #     E.append(int(S[i] * theta[0]))
-            # else:
-            #     E.append(int(S[i] * random.randrange(1,3)/10000000))
-            #
-            # I.append(int(E[i]*alpha) + I[i] - R[i] - D[i])
-            # r = random.randint(r_days[0],r_days[1])
-            # if len(I) > r:
-            #     R.append(int(I[i-r]*beta)+R[i])
-            #     D.append(D[i]+int(I[i-r]*gamma))
-            # else:
-            #     R.append(R[i])
-            #     D.append(D[i])
-            i += 1
-        plt.plot(S, label='suspected')
-        plt.plot(E, label='exposed')
-        plt.plot(I, label='Inception')
-        plt.plot(R, label='Recovered')
+        n = 10000000  # total number
+        e = 0  # Exposed
+        i = 1  # Infections
+        r = 0  # Recovered
+        s = n - r - i - e  # Susceptible
+        mu = 7
+        sd = 1
+        # NDs = 14  # Incubation period
+        alpha = 1/14  # eclipse period to infections rate
+        beta = 0.021 # influence rate
+        gamma_1 = 0.01  # recovery rate of exposed
+        gamma_2 = 0.02  # recovery rate of infections
+        # theta = [0.0001]   # Explore rate
+        # r_days = [7, 15]   # recovery duration
+        init_value = (s, e, i, r)
+        days = np.arange(0, 180)
+        def SEIR_model(init_value, _):
+            Y = np.zeros(4)
+            X = init_value
+            # dS/dt = -beta * S * I
+            Y[0] = -beta * X[0] * X[2]
+            # dE/dt = beta * I * S - (alpha + gamma_1)E
+            Y[1] = beta * X[2] * X[0] - (alpha + gamma_1) * X[1]
+            # dI/dt = alpha * E - gamma_2 * I
+            Y[2] = alpha * X[1] - gamma_2 * X[2]
+            # dR/dt = gamma_1 + gamma_2 * I
+            Y[3] = gamma_1 * X[1] + gamma_2 * X[2]
+            return Y
+
+        func = integrate.odeint(SEIR_model, init_value, days)
+        plt.plot(func[:, 0], label='suspected')
+        plt.plot(func[:, 1], label='exposed')
+        plt.plot(func[:, 2], label='Inception')
+        plt.plot(func[:, 3], label='Recovered')
         plt.legend(loc='best')
         plt.show()
         plt.close()
-        print(S, E, I, R, D)
         return
 
 
@@ -280,12 +277,12 @@ if __name__ == '__main__':
     labels = ['confirm', 'suspect', 'dead', 'heal']
     a = Covid19Analysis()
     result = a.get_data()
-    city_data = a.processing_city_data(result[1],'total')
+    city_data = a.processing_city_data(result[1], 'total')
     print(city_data)
-    a.covid_19_data_plotting('COVID-19 Daily Data',result[3], labels)
+    a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
     a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
     a.plot_cn_map(city_data, title='COVID-19 map')
     city_data_net = a.processing_city_data(result[1], 'net')
     a.plot_cn_map(city_data_net, title='COVID-19 map--net')
     a.plot_world_map(result[1])
-    prediction()
+    a.prediction()
