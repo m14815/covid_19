@@ -151,13 +151,14 @@ class Covid19Analysis:
                         if len(search) > 0:
                             sc = search['city']
                         for c in data[0][p_key].keys():
-                            if ((city == c or c in city) or (sc == c or c in sc)) and len(c) > 0:
+                            if ((c in city) or (c in sc )) and len(c) > 0:
                                 color = self.coloring(data[0][p_key][c])
                                 break
                     if color != '#ffffff':
                         break
             if color == '#ffffff':
                 print('Not match', city)
+                color = '#f0f0f0'
             poly = Polygon(shape, facecolor=color, edgecolor=color)
             ax.add_patch(poly)
         cn_map.drawcoastlines(color='black', linewidth=0.4, )
@@ -217,7 +218,7 @@ class Covid19Analysis:
 
     def covid_19_data_plotting(self, title, data, legend_labels):
         plt.figure(title, figsize=(10, 8))
-        for i in range(4):
+        for i in range(len(legend_labels)):
             plt.plot(data['date'], data[legend_labels[i]], label=legend_labels[i], linestyle='dashed', marker='o')
         plt.grid(linestyle=':')
         plt.legend(loc='best')
@@ -235,38 +236,45 @@ class Covid19Analysis:
         # the prediction with SEIR model with death, and will be more complex
         n = 10000000  # total number
         e = 0  # Exposed
-        i = 1  # Infections
+        i = 2  # Infections
         r = 0  # Recovered
-        s = n - r - i - e  # Susceptible
-        mu = 7
-        sd = 1
+        d = 0 # death
+        s = n - r - i - e - d # Susceptible
+
+        # mu = 7
+        # sd = 1
         # NDs = 14  # Incubation period
-        alpha = 1/14  # eclipse period to infections rate
-        beta = 0.021 # influence rate
-        gamma_1 = 0.01  # recovery rate of exposed
-        gamma_2 = 0.02  # recovery rate of infections
+        alpha = 1/4  # eclipse period to infections rate
+        beta = 2.4 # influence rate
+        gamma_1 = 100/n # recovery rate of exposed
+        gamma_2 = 0.16  # recovery rate of infections
+        omega = 0.06 #death rate
         # theta = [0.0001]   # Explore rate
         # r_days = [7, 15]   # recovery duration
-        init_value = (s, e, i, r)
-        days = np.arange(0, 180)
+        init_value = (s, e, i, r, d)
+        days = np.arange(0, 45)
+
         def SEIR_model(init_value, _):
-            Y = np.zeros(4)
+            Y = np.zeros(5)
             X = init_value
             # dS/dt = -beta * S * I
-            Y[0] = -beta * X[0] * X[2]
+            Y[0] = -beta * X[0] * X[2]/n
             # dE/dt = beta * I * S - (alpha + gamma_1)E
-            Y[1] = beta * X[2] * X[0] - (alpha + gamma_1) * X[1]
+            Y[1] = (beta * X[2] * X[0] - (alpha + gamma_1) * X[1])
             # dI/dt = alpha * E - gamma_2 * I
-            Y[2] = alpha * X[1] - gamma_2 * X[2]
+            Y[2] = (alpha * X[1] - gamma_2 * X[2])
             # dR/dt = gamma_1 + gamma_2 * I
             Y[3] = gamma_1 * X[1] + gamma_2 * X[2]
+            # dD/dt = omega * I
+            Y[4] = omega * X[2]
             return Y
 
-        func = integrate.odeint(SEIR_model, init_value, days)
-        plt.plot(func[:, 0], label='suspected')
-        plt.plot(func[:, 1], label='exposed')
-        plt.plot(func[:, 2], label='Inception')
-        plt.plot(func[:, 3], label='Recovered')
+        func_1 = integrate.odeint(SEIR_model, init_value, days)
+        plt.plot(func_1[:, 0], label='suspected', color = 'blue')
+        plt.plot(func_1[:, 1], label='exposed', color = '#eeae00')
+        plt.plot(func_1[:, 2], label='Inception', color = 'red')
+        plt.plot(func_1[:, 3], label='Recovered', color = 'green')
+        plt.plot(func_1[:, 4], label='Death', color = '#000000')
         plt.legend(loc='best')
         plt.show()
         plt.close()
@@ -281,8 +289,14 @@ if __name__ == '__main__':
     print(city_data)
     a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
     a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
+    net = []
+    for c,h,d in zip(result[2]['confirm'], result[2]['heal'], result[2]['dead']):
+        net.append(c-h-d)
+    result[2]['confirm'] = net
+    a.covid_19_data_plotting('COVID-19 Accumulated--Net',result[2],labels)
     a.plot_cn_map(city_data, title='COVID-19 map')
     city_data_net = a.processing_city_data(result[1], 'net')
+    print(city_data_net)
     a.plot_cn_map(city_data_net, title='COVID-19 map--net')
     a.plot_world_map(result[1])
     a.prediction()
