@@ -26,14 +26,20 @@ class Covid19Analysis:
     warnings.filterwarnings('ignore')
 
     def __init__(self):
+        # tencent data
         self.url_1 = "https://view.inews.qq.com/g2/getOnsInfo?name=disease_h5"
         self.url_2 = 'https://view.inews.qq.com/g2/getOnsInfo?name=disease_other'
+        # alibaba data
+        self.url_3 = "https://cdn.mdeer.com/data/yqstaticdata.js?callback=callbackstaticdata&t=1583292696"
         self.update_time = None
 
     def get_data(self):
         # get data from url
+        data = json.loads(requests.get(self.url_3).content.decode('utf-8')[19:-1])
         area_data = json.loads(requests.get(self.url_1).json()['data'])
         china_data = json.loads(requests.get(self.url_2).json()['data'])
+        print(data.keys())
+        print(data['continentDataList'])
         # last update time
         self.update_time = area_data['lastUpdateTime']
         # total illness in china
@@ -236,7 +242,7 @@ class Covid19Analysis:
         # the prediction with SEIR model with death, and will be more complex
         n = 10000000  # total number
         e = 0  # Exposed
-        i = 2  # Infections
+        i = 1  # Infections
         r = 0  # Recovered
         d = 0 # death
         s = n - r - i - e - d # Susceptible
@@ -244,25 +250,25 @@ class Covid19Analysis:
         # mu = 7
         # sd = 1
         # NDs = 14  # Incubation period
-        alpha = 1/4  # eclipse period to infections rate
-        beta = 2.4 # influence rate
+        alpha = 1/7  # eclipse period to infections rate
+        beta = 2.1/n # influence rate
         gamma_1 = 100/n # recovery rate of exposed
-        gamma_2 = 0.16  # recovery rate of infections
-        omega = 0.06 #death rate
+        gamma_2 = 0.67  # recovery rate of infections
+        omega = 0.02 #death rate
         # theta = [0.0001]   # Explore rate
         # r_days = [7, 15]   # recovery duration
         init_value = (s, e, i, r, d)
-        days = np.arange(0, 45)
+        days = np.arange(0, 90)
 
         def SEIR_model(init_value, _):
             Y = np.zeros(5)
             X = init_value
             # dS/dt = -beta * S * I
-            Y[0] = -beta * X[0] * X[2]/n
+            Y[0] = -beta * X[0] * (X[2] + X[1])
             # dE/dt = beta * I * S - (alpha + gamma_1)E
-            Y[1] = (beta * X[2] * X[0] - (alpha + gamma_1) * X[1])
+            Y[1] = (beta * X[2] * X[0] * 6 / 10 - (alpha + gamma_1) * X[1])
             # dI/dt = alpha * E - gamma_2 * I
-            Y[2] = (alpha * X[1] - gamma_2 * X[2])
+            Y[2] = (alpha * X[1] - gamma_2 * X[2] + beta * X[2] * X[0] / 10 * 4)
             # dR/dt = gamma_1 + gamma_2 * I
             Y[3] = gamma_1 * X[1] + gamma_2 * X[2]
             # dD/dt = omega * I
