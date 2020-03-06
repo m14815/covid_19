@@ -1,3 +1,4 @@
+# -*-coding: utf-8-*-
 """
 This python program get COVID-19 data from tencent, and visualize data, 2D line graph and China, Global map are used.
 Version: 1.0
@@ -14,32 +15,41 @@ import matplotlib.pyplot as plt
 from scipy import integrate, stats
 import numpy as np
 import random
-from matplotlib.font_manager import FontProperties
+from matplotlib.font_manager import FontProperties, _rebuild
 from matplotlib.patches import Polygon, Patch
 from mpl_toolkits.basemap import Basemap
 from pandas.plotting import register_matplotlib_converters
 
 register_matplotlib_converters()
+_rebuild()
 
-
-class Covid19Analysis:
+class Covid19Visual:
     warnings.filterwarnings('ignore')
-
+    #change font to display chinese char
+    # plt.rcParams['font.sans-serif'] = ['SimHei']
+    # plt.rcParams['axes.unicode_minus'] = False
     def __init__(self):
-        # tencent data
+        # Tencent data
         self.url_1 = "https://view.inews.qq.com/g2/getOnsInfo?name=disease_h5"
         self.url_2 = 'https://view.inews.qq.com/g2/getOnsInfo?name=disease_other'
-        # alibaba data
+        # Alibaba data
         self.url_3 = "https://cdn.mdeer.com/data/yqstaticdata.js?callback=callbackstaticdata&t=1583292696"
         self.update_time = None
+        self.handles = [
+            Patch(color='#f0f0f0', alpha=1, linewidth=0),
+            Patch(color='#ffaa85', alpha=1, linewidth=0),
+            Patch(color='#ff7b69', alpha=1, linewidth=0),
+            Patch(color='#bf2121', alpha=1, linewidth=0),
+            Patch(color='#7f1818', alpha=1, linewidth=0)
+        ]
+        self.legend_labels = ['0', '1-9', '10-99', '100-999', '>1000']
+        self.font = FontProperties(fname='Downloads/SimHei.ttf',size=8)
 
     def get_data(self):
         # get data from url
         data = json.loads(requests.get(self.url_3).content.decode('utf-8')[19:-1])
         area_data = json.loads(requests.get(self.url_1).json()['data'])
         china_data = json.loads(requests.get(self.url_2).json()['data'])
-        print(data.keys())
-        print(data['continentDataList'])
         # last update time
         self.update_time = area_data['lastUpdateTime']
         # total illness in china
@@ -50,7 +60,9 @@ class Covid19Analysis:
         adding_day_list = self.proseeing_data(china_data['chinaDayList'])
         # accumulated total
         accumulated_day_list = self.proseeing_data(china_data['chinaDayAddList'])
-        return cn_total, area_tree, adding_day_list, accumulated_day_list
+        # countries data
+        countries_data = data['continentDataList']
+        return cn_total, area_tree, adding_day_list, accumulated_day_list, countries_data
 
     def proseeing_data(self, data):
         result = {'date': [], 'confirm': [], 'suspect': [], 'dead': [], 'heal': []}
@@ -127,13 +139,6 @@ class Covid19Analysis:
         special = {'大庸市': '张家界市', '株州市': '株洲市', '浑江市': '白城市', '巢湖市': '合肥市', '莱芜市': '济南市', '崇明県': '上海市',
                    '丽江纳西族自治县': '丽江市', '达川市': '达州市', '库尔勒市': '巴州', '叶鲁番市': '吐鲁番地区', '阿勒泰市': '伊犁州',
                    '烏海市': '乌海市', '沙湾县': '塔城市'}
-        handles = [
-            Patch(color='#ffaa85', alpha=1, linewidth=0),
-            Patch(color='#ff7b69', alpha=1, linewidth=0),
-            Patch(color='#bf2121', alpha=1, linewidth=0),
-            Patch(color='#7f1818', alpha=1, linewidth=0)
-        ]
-        legend_labels = ['1-9', '10-99', '100-999', '>1000']
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 16)
         cn_map = Basemap(projection='lcc', width=5000000, height=5000000, lat_0=36, lon_0=102, llcrnrlon=lon_min,
@@ -152,25 +157,35 @@ class Covid19Analysis:
                         color = self.coloring(data[0][p_key])
                         break
                     elif isinstance(data[0][p_key], dict):
-                        search = china_region.search(city=city)
+                        if '市' in city:
+                            search = china_region.search(city=city)
+                        else:
+                            search = china_region.search(county=city)
                         sc = ''
                         if len(search) > 0:
                             sc = search['city']
                         for c in data[0][p_key].keys():
-                            if ((c in city) or (c in sc )) and len(c) > 0:
+                            if ((c in city) or (c in sc)) and len(c) > 0:
                                 color = self.coloring(data[0][p_key][c])
                                 break
                     if color != '#ffffff':
                         break
             if color == '#ffffff':
-                print('Not match', city)
+                # print('Not match', city)
                 color = '#f0f0f0'
-            poly = Polygon(shape, facecolor=color, edgecolor=color)
+            poly = Polygon(shape, facecolor=color, edgecolor=color, label=city)
             ax.add_patch(poly)
+            # coord_list = poly.get_xy()  # print out city names on map for debugging propores
+            # print(len(coord_list),city)
+            # mid = len(coord_list)//2
+            # x = (coord_list[0][0] + coord_list[mid][0])/2
+            # y = (coord_list[0][1] + coord_list[mid][1])/2
+            # ax.text(s=city, x=x, y=y, fontsize=8)
         cn_map.drawcoastlines(color='black', linewidth=0.4, )
         cn_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
         cn_map.drawmeridians(np.arange(lon_min, lon_max, 10), labels=[0, 0, 0, 1])
-        ax.legend(handles, legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=4, prop={'size': 16})
+        ax.legend(self.handles, self.legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=5,
+                  prop={'size': 16})
         plt.title(title + '\n(Update: ' + self.update_time + ")", fontproperties=font)
         plt.show()
         fig.savefig(title + '.PNG')
@@ -182,23 +197,8 @@ class Covid19Analysis:
         lat_min = -90
         lon_max = 180
         lon_min = -180
-        legend_labels = ['1-9', '10-99', '100-999', '>1000']
+
         font = FontProperties(size=20)
-        handles = [
-            Patch(color='#ffaa85', alpha=1, linewidth=0),
-            Patch(color='#ff7b69', alpha=1, linewidth=0),
-            Patch(color='#bf2121', alpha=1, linewidth=0),
-            Patch(color='#7f1818', alpha=1, linewidth=0)
-        ]
-        cdata = {}
-        for _ in data[0]:
-            if _['name'] == '钻石号邮轮':
-                cdata['日本本土'] = _['total']['confirm']
-            elif _['name'] in cdata.keys():
-                cdata[_['name']] += _['total']['confirm']
-            else:
-                cdata[_['name']] = _['total']['confirm']
-        print(cdata)
         fig, ax = plt.subplots()
         fig.set_size_inches(32, 16)
         world_map = Basemap(lat_0=0, lon_0=180, llcrnrlon=lon_min, llcrnrlat=lat_min, urcrnrlon=lon_max,
@@ -207,15 +207,20 @@ class Covid19Analysis:
         for info, shape in zip(world_map.countries_info, world_map.countries):
             country = info['FCNAME']
             color = '#ffffff'
-            for key in cdata.keys():
-                if str(country) in key or key in str(country):
-                    color = self.coloring(cdata[key])
+            for continent in data[0]:
+                for country_data in continent['countriesData']:
+                    if (str(country) in country_data['childStatistic']) \
+                            or (country_data['childStatistic'] in str(country)):
+                        color = self.coloring(country_data['totalConfirmed'])
+                        break
+                if color != '#ffffff':
                     break
             poly = Polygon(shape, facecolor=color, edgecolor=color)
             ax.add_patch(poly)
         world_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
         world_map.drawmeridians(np.arange(lon_min, lon_max, 10), labels=[0, 0, 0, 1])
-        ax.legend(handles, legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=4, prop={'size': 16})
+        ax.legend(self.handles, self.legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=5,
+                  prop={'size': 16})
         plt.title('COVID-19 world map\n(Update: ' + self.update_time + ")", fontproperties=font)
         plt.show()
         fig.savefig('COVID-19_world_map.PNG')
@@ -239,26 +244,23 @@ class Covid19Analysis:
         return
 
     def prediction(self):
-        # the prediction with SEIR model with death, and will be more complex
-        n = 10000000  # total number
+        #date: 3.6
+        # the prediction with SEIR model with death, and will be more complex, still update the model
+        n = 1000000  # total number
         e = 0  # Exposed
         i = 1  # Infections
         r = 0  # Recovered
         d = 0 # death
         s = n - r - i - e - d # Susceptible
-
-        # mu = 7
-        # sd = 1
-        # NDs = 14  # Incubation period
-        alpha = 1/7  # eclipse period to infections rate
-        beta = 2.1/n # influence rate
+        alpha = 1/24  # eclipse period to infections rate
+        beta = 2.1/n # influence rate by inception
+        # influence rate by exposed
         gamma_1 = 100/n # recovery rate of exposed
-        gamma_2 = 0.67  # recovery rate of infections
-        omega = 0.02 #death rate
-        # theta = [0.0001]   # Explore rate
-        # r_days = [7, 15]   # recovery duration
+        gamma_2 = 0.2  # recovery rate of infections
+        omega = 0.015 #death rate
         init_value = (s, e, i, r, d)
         days = np.arange(0, 90)
+        plt.figure(figsize=(10, 8))
 
         def SEIR_model(init_value, _):
             Y = np.zeros(5)
@@ -281,6 +283,9 @@ class Covid19Analysis:
         plt.plot(func_1[:, 2], label='Inception', color = 'red')
         plt.plot(func_1[:, 3], label='Recovered', color = 'green')
         plt.plot(func_1[:, 4], label='Death', color = '#000000')
+        plt.title('COVID-19 Predication')
+        plt.xlabel('Days')
+        plt.ylabel('Population')
         plt.legend(loc='best')
         plt.show()
         plt.close()
@@ -289,20 +294,20 @@ class Covid19Analysis:
 
 if __name__ == '__main__':
     labels = ['confirm', 'suspect', 'dead', 'heal']
-    a = Covid19Analysis()
-    result = a.get_data()
-    city_data = a.processing_city_data(result[1], 'total')
-    print(city_data)
-    a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
-    a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
-    net = []
-    for c,h,d in zip(result[2]['confirm'], result[2]['heal'], result[2]['dead']):
-        net.append(c-h-d)
-    result[2]['confirm'] = net
-    a.covid_19_data_plotting('COVID-19 Accumulated--Net',result[2],labels)
-    a.plot_cn_map(city_data, title='COVID-19 map')
-    city_data_net = a.processing_city_data(result[1], 'net')
-    print(city_data_net)
-    a.plot_cn_map(city_data_net, title='COVID-19 map--net')
-    a.plot_world_map(result[1])
+    a = Covid19Visual()
+    # result = a.get_data()
+    # city_data = a.processing_city_data(result[1], 'total')
+    # # print(city_data)
+    # a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
+    # a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
+    # net = []
+    # for c,h,d in zip(result[2]['confirm'], result[2]['heal'], result[2]['dead']):
+    #     net.append(c-h-d)
+    # result[2]['confirm'] = net
+    # a.covid_19_data_plotting('COVID-19 Accumulated--Net',result[2],labels)
+    # a.plot_cn_map(city_data, title='COVID-19 map')
+    # city_data_net = a.processing_city_data(result[1], 'net')
+    # # print(city_data_net)
+    # a.plot_cn_map(city_data_net, title='COVID-19 map--net')
+    # a.plot_world_map(result[4])
     a.prediction()
