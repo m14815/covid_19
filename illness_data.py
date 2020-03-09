@@ -1,7 +1,7 @@
 # -*-coding: utf-8-*-
 """
-This python program get COVID-19 data from tencent, and visualize data, 2D line graph and China, Global map are used.
-Version: 1.0
+This python program get COVID-19 data from tencent and alihealth, and then visualize data, 2D line graph and China, Global map are used.
+Version: 1.0.3
 
 """
 import datetime
@@ -86,7 +86,7 @@ class Covid19Visual:
         for _ in data[0]['children']:
             heal = 0
             if cat == 'net':
-                heal = _['total']['heal']
+                heal = _['total']['heal'] + _['total']['dead']
             # add direct cities
             if _['name'] in d_cities.keys():
                 province[d_cities[_['name']]] = _['total']['confirm'] - heal
@@ -99,7 +99,7 @@ class Covid19Visual:
                 province[_['name']] = {}
                 for c in _['children']:
                     if cat == 'net':
-                        heal = c['total']['heal']
+                        heal = c['total']['heal'] + c['total']['dead']
                     if (c['name'] != '地区待确认') and (c['name'] != '地区待确定'):
                         if c['name'] in special.keys():
                             if special[c['name']] in province[_['name']].keys():
@@ -137,7 +137,7 @@ class Covid19Visual:
         tw = ['基隆市', '台北市', '桃园县', '宜兰县', '新竹县', '苗栗县', '台中县', '莲花县', '金门县', '南投县', '台中市', '彰化县',
               '云林县', '嘉义县', '台东县', '凤山县', '诏安县', '台南县', '南澳县', '台南市', '屏东县', '高雄市', '台北县', ]
         special = {'大庸市': '张家界市', '株州市': '株洲市', '浑江市': '白城市', '巢湖市': '合肥市', '莱芜市': '济南市', '崇明県': '上海市',
-                   '丽江纳西族自治县': '丽江市', '达川市': '达州市', '库尔勒市': '巴州', '叶鲁番市': '吐鲁番地区', '阿勒泰市': '伊犁州',
+                   '丽江纳西族自治县': '丽江市', '达川市': '达州市', '巴州': '巴音郭楞蒙古自治州', '叶鲁番市': '吐鲁番地区', '阿勒泰市': '伊犁州',
                    '烏海市': '乌海市', '沙湾县': '塔城市'}
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 16)
@@ -159,12 +159,16 @@ class Covid19Visual:
                     elif isinstance(data[0][p_key], dict):
                         if '市' in city:
                             search = china_region.search(city=city)
-                        else:
+                        elif '县' or '区' in city:
                             search = china_region.search(county=city)
+                        else:
+                            search = china_region.search(city=city)
                         sc = ''
                         if len(search) > 0:
                             sc = search['city']
                         for c in data[0][p_key].keys():
+                            if sc == '巴音郭楞蒙古自治州':
+                                sc = '巴州'
                             if ((c in city) or (c in sc)) and len(c) > 0:
                                 color = self.coloring(data[0][p_key][c])
                                 break
@@ -175,18 +179,20 @@ class Covid19Visual:
                 color = '#f0f0f0'
             poly = Polygon(shape, facecolor=color, edgecolor=color, label=city)
             ax.add_patch(poly)
-            # coord_list = poly.get_xy()  # print out city names on map for debugging propores
+            coord_list = poly.get_xy()  # print out city names on map for debugging propores
             # print(len(coord_list),city)
             # mid = len(coord_list)//2
             # x = (coord_list[0][0] + coord_list[mid][0])/2
             # y = (coord_list[0][1] + coord_list[mid][1])/2
             # ax.text(s=city, x=x, y=y, fontsize=8)
+            #add water maker
         cn_map.drawcoastlines(color='black', linewidth=0.4, )
         cn_map.drawparallels(np.arange(lat_min, lat_max, 10), labels=[1, 0, 0, 1])
         cn_map.drawmeridians(np.arange(lon_min, lon_max, 10), labels=[0, 0, 0, 1])
         ax.legend(self.handles, self.legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=5,
                   prop={'size': 16})
         plt.title(title + '\n(Update: ' + self.update_time + ")", fontproperties=font)
+        plt.text(1.2, 0.5, 'By Ruiyan Ma', fontsize=20, color='gray',  va='bottom', alpha=0.5)
         plt.show()
         fig.savefig(title + '.PNG')
         plt.close()
@@ -222,6 +228,7 @@ class Covid19Visual:
         ax.legend(self.handles, self.legend_labels, bbox_to_anchor=(0.5, -0.11), loc='lower center', ncol=5,
                   prop={'size': 16})
         plt.title('COVID-19 world map\n(Update: ' + self.update_time + ")", fontproperties=font)
+        plt.text(0.5, 0.1, 'By Ruiyan Ma', fontsize=20, color='gray', ha='right', va='bottom', alpha=0.5)
         plt.show()
         fig.savefig('COVID-19_world_map.PNG')
         plt.close()
@@ -266,7 +273,7 @@ class Covid19Visual:
             Y = np.zeros(5)
             X = init_value
             # dS/dt = -beta * S * I
-            Y[0] = -beta * X[0] * (X[2] + X[1])
+            Y[0] = -beta * X[0] * X[2]
             # dE/dt = beta * I * S - (alpha + gamma_1)E
             Y[1] = (beta * X[2] * X[0] * 6 / 10 - (alpha + gamma_1) * X[1])
             # dI/dt = alpha * E - gamma_2 * I
@@ -295,19 +302,19 @@ class Covid19Visual:
 if __name__ == '__main__':
     labels = ['confirm', 'suspect', 'dead', 'heal']
     a = Covid19Visual()
-    # result = a.get_data()
-    # city_data = a.processing_city_data(result[1], 'total')
-    # # print(city_data)
-    # a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
-    # a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
-    # net = []
-    # for c,h,d in zip(result[2]['confirm'], result[2]['heal'], result[2]['dead']):
-    #     net.append(c-h-d)
-    # result[2]['confirm'] = net
-    # a.covid_19_data_plotting('COVID-19 Accumulated--Net',result[2],labels)
-    # a.plot_cn_map(city_data, title='COVID-19 map')
-    # city_data_net = a.processing_city_data(result[1], 'net')
-    # # print(city_data_net)
-    # a.plot_cn_map(city_data_net, title='COVID-19 map--net')
-    # a.plot_world_map(result[4])
+    result = a.get_data()
+    city_data = a.processing_city_data(result[1], 'total')
+    # print(city_data)
+    a.covid_19_data_plotting('COVID-19 Daily Data', result[3], labels)
+    a.covid_19_data_plotting('COVID-19 Accumulated Tracing', result[2], labels)
+    net = []
+    for c,h,d in zip(result[2]['confirm'], result[2]['heal'], result[2]['dead']):
+        net.append(c-h-d)
+    result[2]['confirm'] = net
+    a.covid_19_data_plotting('COVID-19 Accumulated--Net',result[2],labels)
+    a.plot_cn_map(city_data, title='COVID-19 map')
+    city_data_net = a.processing_city_data(result[1], 'net')
+    # print(city_data_net)
+    a.plot_cn_map(city_data_net, title='COVID-19 map--net')
+    a.plot_world_map(result[4])
     a.prediction()
